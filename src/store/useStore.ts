@@ -4,39 +4,15 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
 const CAMPAIGN_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#06b6d4']
 
-export const DEFAULT_SEGMENTS = [
-  'All Subscribers',
-  'New Users',
-  'VIP Members',
-  'Inactive Users',
-  'Trial Users',
-  'Engaged Readers',
-  'Churned Users',
-]
-
-const defaultCampaigns: Campaign[] = [
-  { id: 'c1', name: 'Summer Sale', color: '#3b82f6', startDate: '2026-05-01', endDate: '2026-05-31', goal: 'Drive Q2 revenue', segments: ['All Subscribers', 'VIP Members'] },
-  { id: 'c2', name: 'Onboarding Drip', color: '#8b5cf6', startDate: '2026-05-01', endDate: '2026-06-30', goal: 'Activate new users', segments: ['New Users', 'Trial Users'] },
-  { id: 'c3', name: 'Monthly Newsletter', color: '#10b981', startDate: '2026-05-01', endDate: '2026-12-31', goal: 'Retain subscribers', segments: ['All Subscribers', 'Engaged Readers'] },
-]
-
-const defaultEmails: EmailCard[] = [
-  { id: 'e1', subject: 'Summer Sale Starts Now — 40% Off Everything', sendDate: '2026-05-07T10:00', segment: ['All Subscribers', 'VIP Members'], campaignId: 'c1', emailType: 'Promo', status: 'Sent', owner: 'Alex', previewText: 'Our biggest sale of the year is here', notes: '', comments: [] },
-  { id: 'e2', subject: 'Welcome to EmailCal — Getting Started', sendDate: '2026-05-08T09:00', segment: ['New Users'], campaignId: 'c2', emailType: 'Drip', status: 'Sent', owner: 'Jordan', previewText: 'Here is everything you need to know', notes: '', comments: [] },
-  { id: 'e3', subject: "May Newsletter — What's New This Month", sendDate: '2026-05-12T08:00', segment: ['All Subscribers', 'Engaged Readers'], campaignId: 'c3', emailType: 'Newsletter', status: 'Approved', owner: 'Sam', previewText: 'Catch up on all the latest updates', notes: 'Make sure to include the product roundup', comments: [{ id: 'cmt1', author: 'Alex', text: 'Can we add the case study link?', timestamp: '2026-05-05T14:00' }] },
-  { id: 'e4', subject: 'Last Chance — Summer Sale Ends Sunday', sendDate: '2026-05-16T11:00', segment: ['All Subscribers'], campaignId: 'c1', emailType: 'Promo', status: 'Scheduled', owner: 'Alex', previewText: "Don't miss out on 40% off", notes: '', comments: [] },
-  { id: 'e5', subject: 'Pro Tips: Get More from EmailCal', sendDate: '2026-05-15T09:00', segment: ['New Users', 'Trial Users'], campaignId: 'c2', emailType: 'Drip', status: 'Review', owner: 'Jordan', previewText: 'Power user features you might have missed', notes: '', comments: [] },
-  { id: 'e6', subject: 'Exclusive: Members-Only Flash Sale', sendDate: '2026-05-20T10:00', segment: ['VIP Members'], campaignId: 'c1', emailType: 'Promo', status: 'Draft', owner: 'Alex', previewText: '24-hour access for our best customers', notes: 'Needs design sign-off', comments: [] },
-  { id: 'e7', subject: 'Your Monthly Digest — May Edition', sendDate: '2026-05-28T08:30', segment: ['All Subscribers', 'Engaged Readers'], campaignId: 'c3', emailType: 'Newsletter', status: 'Draft', owner: 'Sam', previewText: 'Everything that happened in May', notes: '', comments: [] },
-]
-
 type SegmentRow = {
   id: string
+  team_id: string
   name: string
 }
 
 type CampaignRow = {
   id: string
+  team_id: string
   name: string
   color: string
   start_date: string
@@ -47,6 +23,7 @@ type CampaignRow = {
 
 type EmailRow = {
   id: string
+  team_id: string
   subject: string
   send_date: string
   segment: string[]
@@ -60,6 +37,7 @@ type EmailRow = {
 
 type CommentRow = {
   id: string
+  team_id: string
   email_id: string
   author: string
   body: string
@@ -106,23 +84,38 @@ function mapEmail(row: EmailRow, comments: CommentRow[]): EmailCard {
   }
 }
 
-export function useStore() {
-  const [state, setState] = useState<AppState>({
-    segments: DEFAULT_SEGMENTS,
-    campaigns: defaultCampaigns,
-    emails: defaultEmails,
-    selectedCampaignId: null,
-    selectedSegment: null,
-    view: 'month',
-    currentDate: new Date('2026-05-01'),
-  })
-  const [isLoading, setIsLoading] = useState(isSupabaseConfigured)
+const emptyState: AppState = {
+  segments: [],
+  campaigns: [],
+  emails: [],
+  selectedCampaignId: null,
+  selectedSegment: null,
+  view: 'month',
+  currentDate: new Date(),
+}
+
+export function useStore(teamId: string | null, commentAuthor: string) {
+  const [state, setState] = useState<AppState>(emptyState)
+  const [isLoading, setIsLoading] = useState(Boolean(teamId && isSupabaseConfigured))
   const [error, setError] = useState<string | null>(
     isSupabaseConfigured ? null : 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to connect the app to your database.'
   )
 
   const loadData = useCallback(async () => {
     if (!supabase) return
+
+    if (!teamId) {
+      setState(s => ({
+        ...s,
+        segments: [],
+        campaigns: [],
+        emails: [],
+        selectedCampaignId: null,
+        selectedSegment: null,
+      }))
+      setIsLoading(false)
+      return
+    }
 
     setIsLoading(true)
     setError(null)
@@ -133,10 +126,10 @@ export function useStore() {
       { data: emailsData, error: emailsError },
       { data: commentsData, error: commentsError },
     ] = await Promise.all([
-      supabase.from('segments').select('id, name').order('name'),
-      supabase.from('campaigns').select('id, name, color, start_date, end_date, goal, segments').order('created_at'),
-      supabase.from('emails').select('id, subject, send_date, segment, campaign_id, email_type, status, owner, preview_text, notes').order('send_date'),
-      supabase.from('comments').select('id, email_id, author, body, created_at').order('created_at'),
+      supabase.from('segments').select('id, team_id, name').eq('team_id', teamId).order('name'),
+      supabase.from('campaigns').select('id, team_id, name, color, start_date, end_date, goal, segments').eq('team_id', teamId).order('created_at'),
+      supabase.from('emails').select('id, team_id, subject, send_date, segment, campaign_id, email_type, status, owner, preview_text, notes').eq('team_id', teamId).order('send_date'),
+      supabase.from('comments').select('id, team_id, email_id, author, body, created_at').eq('team_id', teamId).order('created_at'),
     ])
 
     const firstError = segmentsError ?? campaignsError ?? emailsError ?? commentsError
@@ -153,16 +146,17 @@ export function useStore() {
       emails: ((emailsData as EmailRow[] | null) ?? []).map(email => mapEmail(email, ((commentsData as CommentRow[] | null) ?? []))),
     }))
     setIsLoading(false)
-  }, [])
+  }, [teamId])
 
   useEffect(() => {
     void loadData()
   }, [loadData])
 
   const addEmail = useCallback(async (email: Omit<EmailCard, 'id' | 'comments'>) => {
-    if (!supabase) return
+    if (!supabase || !teamId) return
 
     const { error: insertError } = await supabase.from('emails').insert({
+      team_id: teamId,
       subject: email.subject,
       send_date: new Date(email.sendDate).toISOString(),
       segment: email.segment,
@@ -180,10 +174,10 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const updateEmail = useCallback(async (id: string, updates: Partial<EmailCard>) => {
-    if (!supabase) return
+    if (!supabase || !teamId) return
 
     const payload: Record<string, unknown> = {}
     if (updates.subject !== undefined) payload.subject = updates.subject
@@ -196,7 +190,7 @@ export function useStore() {
     if (updates.previewText !== undefined) payload.preview_text = updates.previewText
     if (updates.notes !== undefined) payload.notes = updates.notes
 
-    const { error: updateError } = await supabase.from('emails').update(payload).eq('id', id)
+    const { error: updateError } = await supabase.from('emails').update(payload).eq('id', id).eq('team_id', teamId)
 
     if (updateError) {
       setError(updateError.message)
@@ -204,12 +198,12 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const deleteEmail = useCallback(async (id: string) => {
-    if (!supabase) return
+    if (!supabase || !teamId) return
 
-    const { error: deleteError } = await supabase.from('emails').delete().eq('id', id)
+    const { error: deleteError } = await supabase.from('emails').delete().eq('id', id).eq('team_id', teamId)
 
     if (deleteError) {
       setError(deleteError.message)
@@ -217,13 +211,14 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const addCampaign = useCallback(async (campaign: Omit<Campaign, 'id' | 'color'>) => {
-    if (!supabase) return
+    if (!supabase || !teamId) return
 
     const color = CAMPAIGN_COLORS[Math.floor(Math.random() * CAMPAIGN_COLORS.length)]
     const { error: insertError } = await supabase.from('campaigns').insert({
+      team_id: teamId,
       name: campaign.name,
       color,
       start_date: campaign.startDate,
@@ -238,14 +233,14 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const renameCampaign = useCallback(async (id: string, newName: string) => {
+    if (!supabase || !teamId) return
     const trimmed = newName.trim()
     if (!trimmed) return
-    if (!supabase) return
 
-    const { error: updateError } = await supabase.from('campaigns').update({ name: trimmed }).eq('id', id)
+    const { error: updateError } = await supabase.from('campaigns').update({ name: trimmed }).eq('id', id).eq('team_id', teamId)
 
     if (updateError) {
       setError(updateError.message)
@@ -253,14 +248,14 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const addSegment = useCallback(async (name: string) => {
+    if (!supabase || !teamId) return
     const trimmed = name.trim()
     if (!trimmed) return
-    if (!supabase) return
 
-    const { error: insertError } = await supabase.from('segments').insert({ name: trimmed })
+    const { error: insertError } = await supabase.from('segments').insert({ team_id: teamId, name: trimmed })
 
     if (insertError) {
       setError(insertError.message)
@@ -268,17 +263,17 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
   const renameSegment = useCallback(async (oldName: string, newName: string) => {
+    if (!supabase || !teamId) return
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
-    if (!supabase) return
 
     const [segmentResult, campaignsResult, emailsResult] = await Promise.all([
-      supabase.from('segments').update({ name: trimmed }).eq('name', oldName),
-      supabase.rpc('rename_segment_in_campaigns', { old_name: oldName, new_name: trimmed }),
-      supabase.rpc('rename_segment_in_emails', { old_name: oldName, new_name: trimmed }),
+      supabase.from('segments').update({ name: trimmed }).eq('name', oldName).eq('team_id', teamId),
+      supabase.rpc('rename_segment_in_campaigns', { p_team_id: teamId, old_name: oldName, new_name: trimmed }),
+      supabase.rpc('rename_segment_in_emails', { p_team_id: teamId, old_name: oldName, new_name: trimmed }),
     ])
 
     const firstError = segmentResult.error ?? campaignsResult.error ?? emailsResult.error
@@ -292,14 +287,15 @@ export function useStore() {
       selectedSegment: s.selectedSegment === oldName ? trimmed : s.selectedSegment,
     }))
     await loadData()
-  }, [loadData])
+  }, [loadData, teamId])
 
-  const addComment = useCallback(async (emailId: string, author: string, text: string) => {
-    if (!supabase) return
+  const addComment = useCallback(async (emailId: string, _author: string, text: string) => {
+    if (!supabase || !teamId) return
 
     const { error: insertError } = await supabase.from('comments').insert({
+      team_id: teamId,
       email_id: emailId,
-      author,
+      author: commentAuthor || 'Teammate',
       body: text,
     })
 
@@ -309,7 +305,7 @@ export function useStore() {
     }
 
     await loadData()
-  }, [loadData])
+  }, [commentAuthor, loadData, teamId])
 
   const setView = useCallback((view: ViewMode) => setState(s => ({ ...s, view })), [])
   const setCurrentDate = useCallback((d: Date) => setState(s => ({ ...s, currentDate: d })), [])
@@ -326,5 +322,23 @@ export function useStore() {
     )
   }, [state.emails])
 
-  return { state, isLoading, error, addEmail, updateEmail, deleteEmail, addCampaign, renameCampaign, addSegment, renameSegment, addComment, setView, setCurrentDate, setSelectedCampaign, setSelectedSegment, getConflicts, reload: loadData }
+  return {
+    state,
+    isLoading,
+    error,
+    addEmail,
+    updateEmail,
+    deleteEmail,
+    addCampaign,
+    renameCampaign,
+    addSegment,
+    renameSegment,
+    addComment,
+    setView,
+    setCurrentDate,
+    setSelectedCampaign,
+    setSelectedSegment,
+    getConflicts,
+    reload: loadData,
+  }
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { addMonths, subMonths } from 'date-fns'
 import { useStore } from './store/useStore'
+import { useAuth } from './store/useAuth'
 import { EmailCard } from './types'
 import Sidebar from './components/Sidebar'
 import MonthCalendar from './components/MonthCalendar'
@@ -10,16 +11,54 @@ import Analytics from './components/Analytics'
 import EmailModal from './components/EmailModal'
 import AddEmailModal from './components/AddEmailModal'
 import AddCampaignModal from './components/AddCampaignModal'
+import AuthScreen from './components/AuthScreen'
+import TeamDirectory from './components/TeamDirectory'
 
 type Modal = 'none' | 'addEmail' | 'addCampaign'
 
 export default function App() {
-  const { state, isLoading, error, addEmail, updateEmail, deleteEmail, addCampaign, renameCampaign, addSegment, renameSegment, addComment, setView, setCurrentDate, setSelectedCampaign, setSelectedSegment, getConflicts, reload } = useStore()
+  const auth = useAuth()
+  const {
+    session,
+    profile,
+    teams,
+    activeTeamId,
+    isLoading: authLoading,
+    error: authError,
+    info,
+    signIn,
+    signUp,
+    signOut,
+    switchTeam,
+  } = auth
+
+  const {
+    state,
+    isLoading,
+    error,
+    addEmail,
+    updateEmail,
+    deleteEmail,
+    addCampaign,
+    renameCampaign,
+    addSegment,
+    renameSegment,
+    addComment,
+    setView,
+    setCurrentDate,
+    setSelectedCampaign,
+    setSelectedSegment,
+    getConflicts,
+    reload,
+  } = useStore(activeTeamId, profile?.fullName ?? '')
+
   const [selectedEmail, setSelectedEmail] = useState<EmailCard | null>(null)
   const [modal, setModal] = useState<Modal>('none')
   const [clickedDate, setClickedDate] = useState<Date | undefined>()
   const [newEmailCampaignId, setNewEmailCampaignId] = useState<string | undefined>()
   const [activeNav, setActiveNav] = useState('home')
+
+  const activeTeam = teams.find(team => team.id === activeTeamId) ?? null
 
   const handleNavChange = (id: string) => {
     setActiveNav(id)
@@ -56,11 +95,26 @@ export default function App() {
     ? `Campaign: ${campaigns.find(c => c.id === selectedCampaignId)?.name}`
     : null
 
+  if (!session || !profile) {
+    return (
+      <AuthScreen
+        onSignIn={(email, password) => { void signIn(email, password) }}
+        onSignUp={(email, password, fullName, teamName) => { void signUp(email, password, fullName, teamName) }}
+        error={authError}
+        info={info}
+        isLoading={authLoading}
+      />
+    )
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar
         campaigns={campaigns}
+        emails={emails}
         segments={segments}
+        currentUserName={profile.fullName}
+        currentUserLabel={profile.isSuperadmin ? 'Superadmin' : activeTeam?.name ?? 'Workspace member'}
         selectedCampaignId={selectedCampaignId}
         selectedSegment={selectedSegment}
         onSelectCampaign={setSelectedCampaign}
@@ -80,9 +134,13 @@ export default function App() {
             {activeNav === 'home' && (
               <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
                 {(['month', 'list'] as const).map(v => (
-                  <button key={v} onClick={() => setView(v)}
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
                     className={`px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize ${state.view === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                  >{v}</button>
+                  >
+                    {v}
+                  </button>
                 ))}
               </div>
             )}
@@ -100,50 +158,98 @@ export default function App() {
               </div>
             )}
           </div>
-          <button
-            onClick={() => openAddEmail(selectedCampaignId ?? undefined)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            New Email
-          </button>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">{profile.fullName}</div>
+                <div className="text-xs text-slate-500">
+                  {profile.isSuperadmin ? 'Superadmin' : activeTeam?.name ?? 'No workspace selected'}
+                </div>
+              </div>
+              {profile.isSuperadmin && teams.length > 0 && (
+                <select
+                  value={activeTeamId ?? ''}
+                  onChange={e => { void switchTeam(e.target.value) }}
+                  className="text-sm border border-slate-200 rounded-lg px-2 py-1 bg-white"
+                >
+                  {teams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <button
+              onClick={() => openAddEmail(selectedCampaignId ?? undefined)}
+              disabled={!activeTeamId}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <span className="text-lg leading-none">+</span>
+              New Email
+            </button>
+            <button
+              onClick={() => { void signOut() }}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
         </header>
 
-        {(error || isLoading) && (
-          <div className={`px-6 py-3 text-sm border-b shrink-0 ${error ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-            {isLoading
-              ? 'Syncing with Supabase...'
-              : error}
-            {error && (
-              <button onClick={() => void reload()} className="ml-3 text-blue-700 hover:text-blue-900 font-medium">
+        {(authLoading || isLoading || error || authError) && (
+          <div className={`px-6 py-3 text-sm border-b shrink-0 ${(error || authError) ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+            {authLoading || isLoading ? 'Syncing your workspace...' : error ?? authError}
+            {(error || authError) && (
+              <button onClick={() => { void reload(); void auth.reload() }} className="ml-3 text-blue-700 hover:text-blue-900 font-medium">
                 Retry
               </button>
             )}
           </div>
         )}
 
-        <main className="flex-1 overflow-hidden flex flex-col">
-          {activeNav === 'analytics'
-            ? <Analytics emails={emails} campaigns={campaigns} />
-            : activeNav === 'pipeline' || state.view === 'pipeline'
-            ? <PipelineView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} onEmailClick={setSelectedEmail} />
-            : state.view === 'list'
-            ? <ListView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} getConflicts={getConflicts} onEmailClick={setSelectedEmail} />
-            : <MonthCalendar
-                currentDate={currentDate}
-                emails={filteredEmails}
-                campaigns={campaigns}
-                selectedCampaignId={selectedCampaignId}
-                getConflicts={getConflicts}
-                onEmailClick={setSelectedEmail}
-                onDayClick={d => openAddEmail(selectedCampaignId ?? undefined, d)}
-                onPrev={() => setCurrentDate(subMonths(currentDate, 1))}
-                onNext={() => setCurrentDate(addMonths(currentDate, 1))}
-                onToday={() => setCurrentDate(new Date())}
-              />
-          }
-        </main>
+        {!activeTeamId ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="max-w-md text-center rounded-3xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
+              <div className="text-lg font-semibold text-slate-800">No team workspace selected</div>
+              <p className="mt-2 text-sm text-slate-500">
+                {profile.isSuperadmin
+                  ? 'Pick a team from the directory to inspect its workspace.'
+                  : 'Your account does not belong to a team yet.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <main className="flex-1 overflow-hidden flex flex-col">
+            {activeNav === 'analytics'
+              ? <Analytics emails={emails} campaigns={campaigns} />
+              : activeNav === 'pipeline' || state.view === 'pipeline'
+              ? <PipelineView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} onEmailClick={setSelectedEmail} />
+              : state.view === 'list'
+              ? <ListView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} getConflicts={getConflicts} onEmailClick={setSelectedEmail} />
+              : <MonthCalendar
+                  currentDate={currentDate}
+                  emails={filteredEmails}
+                  campaigns={campaigns}
+                  selectedCampaignId={selectedCampaignId}
+                  getConflicts={getConflicts}
+                  onEmailClick={setSelectedEmail}
+                  onDayClick={d => openAddEmail(selectedCampaignId ?? undefined, d)}
+                  onPrev={() => setCurrentDate(subMonths(currentDate, 1))}
+                  onNext={() => setCurrentDate(addMonths(currentDate, 1))}
+                  onToday={() => setCurrentDate(new Date())}
+                />
+            }
+          </main>
+        )}
       </div>
+
+      <TeamDirectory
+        teams={teams}
+        activeTeamId={activeTeamId}
+        isSuperadmin={profile.isSuperadmin}
+        onSwitchTeam={teamId => { void switchTeam(teamId) }}
+      />
 
       {selectedEmail && (
         <EmailModal
@@ -153,7 +259,7 @@ export default function App() {
           hasConflict={getConflicts(selectedEmail)}
           onClose={() => setSelectedEmail(null)}
           onUpdate={(id, updates) => { void updateEmail(id, updates) }}
-          onDelete={id => { void deleteEmail(id) }}
+          onDelete={id => { void deleteEmail(id); setSelectedEmail(null) }}
           onAddComment={(emailId, author, text) => { void addComment(emailId, author, text) }}
         />
       )}

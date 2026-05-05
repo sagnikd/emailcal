@@ -2,6 +2,21 @@ export type EmailStatus = 'Draft' | 'Review' | 'Approved' | 'Scheduled' | 'Sent'
 export type EmailType = 'Newsletter' | 'Promo' | 'Drip' | 'Transactional'
 export type ViewMode = 'month' | 'week' | 'list' | 'pipeline'
 
+export interface Team {
+  id: string
+  name: string
+  slug: string
+  memberCount: number
+}
+
+export interface Profile {
+  userId: string
+  email: string
+  fullName: string
+  isSuperadmin: boolean
+  currentTeamId: string | null
+}
+
 export interface Campaign {
   id: string
   name: string

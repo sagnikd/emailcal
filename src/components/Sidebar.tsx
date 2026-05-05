@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Campaign } from '../types'
+import { Campaign, EmailCard } from '../types'
 
 const NAV = [
   { id: 'home', label: 'Calendar', icon: '📅' },
@@ -9,7 +9,10 @@ const NAV = [
 
 interface Props {
   campaigns: Campaign[]
+  emails: EmailCard[]
   segments: string[]
+  currentUserName: string
+  currentUserLabel: string
   selectedCampaignId: string | null
   selectedSegment: string | null
   onSelectCampaign: (id: string | null) => void
@@ -32,7 +35,7 @@ function PencilIcon() {
 }
 
 export default function Sidebar({
-  campaigns, segments, selectedCampaignId, selectedSegment,
+  campaigns, emails, segments, currentUserName, currentUserLabel, selectedCampaignId, selectedSegment,
   onSelectCampaign, onSelectSegment, onAddSegment, onRenameSegment, onRenameCampaign, onAddEmailToCampaign,
   activeNav, onNavChange, onAddCampaign,
 }: Props) {
@@ -46,6 +49,17 @@ export default function Sidebar({
   const addSegInputRef = useRef<HTMLInputElement>(null)
   const editSegInputRef = useRef<HTMLInputElement>(null)
   const editCampaignInputRef = useRef<HTMLInputElement>(null)
+  const userInitial = currentUserName.trim().charAt(0).toUpperCase() || 'U'
+
+  const getCampaignSegmentCount = (campaignId: string, fallbackSegments: string[]) => {
+    const uniqueSegments = new Set(
+      emails
+        .filter(email => email.campaignId === campaignId)
+        .flatMap(email => email.segment)
+    )
+
+    return uniqueSegments.size > 0 ? uniqueSegments.size : fallbackSegments.length
+  }
 
   /* ── Segment helpers ── */
   const commitNewSeg = () => {
@@ -77,7 +91,7 @@ export default function Sidebar({
       <div className="p-4 border-b border-slate-100 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">EC</div>
-          <span className="font-semibold text-slate-800 text-sm">EmailCal</span>
+          <span className="font-semibold text-slate-800 text-sm">EmailsCal</span>
         </div>
       </div>
 
@@ -142,10 +156,17 @@ export default function Sidebar({
                 >
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
                   <div className="flex-1 min-w-0">
+                    {(() => {
+                      const segmentCount = getCampaignSegmentCount(c.id, c.segments)
+                      return (
+                        <>
                     <div className="truncate">{c.name}</div>
-                    {c.segments.length > 0 && (
-                      <div className="text-xs text-slate-400 truncate">{c.segments.length} segment{c.segments.length !== 1 ? 's' : ''}</div>
-                    )}
+                          {segmentCount > 0 && (
+                            <div className="text-xs text-slate-400 truncate">{segmentCount} segment{segmentCount !== 1 ? 's' : ''}</div>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                   {/* Action icons — visible on hover */}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
@@ -248,10 +269,10 @@ export default function Sidebar({
       {/* User */}
       <div className="p-3 border-t border-slate-100 shrink-0">
         <div className="flex items-center gap-2 px-3 py-2">
-          <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">A</div>
+          <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">{userInitial}</div>
           <div className="text-sm">
-            <div className="font-medium text-slate-700">Alex</div>
-            <div className="text-xs text-slate-400">Admin</div>
+            <div className="font-medium text-slate-700 truncate">{currentUserName}</div>
+            <div className="text-xs text-slate-400 truncate">{currentUserLabel}</div>
           </div>
         </div>
       </div>
