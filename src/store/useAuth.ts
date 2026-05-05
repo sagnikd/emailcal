@@ -155,13 +155,8 @@ export function useAuth() {
 
     const rawMemberships = ((memberships as Array<{ team_id: string; teams: TeamRow[] | TeamRow }> | null) ?? [])
     if (rawMemberships.length === 0) {
-      const fallbackTeamName =
-        nextProfile.fullName?.trim()
-          ? `${nextProfile.fullName.split(' ')[0]}'s Workspace`
-          : `${(nextProfile.email.split('@')[0] || 'Team').replace(/[._-]+/g, ' ')} Workspace`
-
       const { error: bootstrapError } = await supabase.rpc('bootstrap_team_signup', {
-        p_team_name: fallbackTeamName,
+        p_team_name: 'HCL Software Workspace',
         p_full_name: nextProfile.fullName || fallbackName,
       })
 
@@ -238,7 +233,12 @@ export function useAuth() {
     })
 
     if (signUpError) {
-      setError(signUpError.message)
+      const message = signUpError.message.toLowerCase()
+      if (message.includes('email rate limit exceeded')) {
+        setError('Signup email sending is being throttled by Supabase right now. If the account already exists, try Sign In. Otherwise wait a bit and try again, or disable email confirmation for this project.')
+      } else {
+        setError(signUpError.message)
+      }
       return
     }
 

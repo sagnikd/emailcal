@@ -182,7 +182,6 @@ declare
   v_user_id uuid := auth.uid();
   v_email text;
   v_team_id uuid;
-  v_slug_base text;
 begin
   if v_user_id is null then
     raise exception 'Authentication required';
@@ -202,34 +201,30 @@ begin
       full_name = excluded.full_name,
       is_superadmin = excluded.is_superadmin;
 
-  if not exists (select 1 from team_members where user_id = v_user_id) then
-    v_slug_base := regexp_replace(lower(trim(p_team_name)), '[^a-z0-9]+', '-', 'g');
-    v_slug_base := trim(both '-' from v_slug_base);
-    if v_slug_base = '' then
-      v_slug_base := 'team';
-    end if;
+  select id into v_team_id
+  from teams
+  where slug = 'hcl-software-workspace'
+  limit 1;
 
+  if v_team_id is null then
     insert into teams (name, slug, created_by)
-    values (
-      trim(p_team_name),
-      v_slug_base || '-' || substr(md5(gen_random_uuid()::text), 1, 6),
-      v_user_id
-    )
+    values ('HCL Software Workspace', 'hcl-software-workspace', v_user_id)
     returning id into v_team_id;
 
-    insert into team_members (team_id, user_id, role)
-    values (v_team_id, v_user_id, 'owner');
-
-    update profiles
-    set current_team_id = v_team_id
-    where user_id = v_user_id;
-
     perform seed_team_workspace(v_team_id);
-  else
-    select current_team_id into v_team_id
-    from profiles
-    where user_id = v_user_id;
   end if;
+
+  insert into team_members (team_id, user_id, role)
+  values (
+    v_team_id,
+    v_user_id,
+    case when lower(coalesce(v_email, '')) = 'datta.sagnik129@gmail.com' then 'owner' else 'member' end
+  )
+  on conflict (team_id, user_id) do nothing;
+
+  update profiles
+  set current_team_id = v_team_id
+  where user_id = v_user_id;
 
   return v_team_id;
 end;
