@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { addMonths, subMonths } from 'date-fns'
 import { useStore } from './store/useStore'
 import { useAuth } from './store/useAuth'
@@ -22,6 +22,7 @@ export default function App() {
     session,
     profile,
     teams,
+    allTeams,
     activeTeamId,
     isLoading: authLoading,
     error: authError,
@@ -61,8 +62,14 @@ export default function App() {
   const [clickedDate, setClickedDate] = useState<Date | undefined>()
   const [newEmailCampaignId, setNewEmailCampaignId] = useState<string | undefined>()
   const [activeNav, setActiveNav] = useState('home')
+  const pendingUrlTeamSlug = useRef<string | null>(null)
 
   const activeTeam = teams.find(team => team.id === activeTeamId) ?? null
+
+  const getTeamSlugFromPath = () => {
+    const match = window.location.pathname.match(/^\/team\/([^/]+)$/)
+    return match ? decodeURIComponent(match[1]) : null
+  }
 
   const handleNavChange = (id: string) => {
     setActiveNav(id)
@@ -83,6 +90,34 @@ export default function App() {
     const nextSelectedEmail = emails.find(email => email.id === selectedEmail.id) ?? null
     setSelectedEmail(nextSelectedEmail)
   }, [emails, selectedEmail])
+
+  useEffect(() => {
+    pendingUrlTeamSlug.current = getTeamSlugFromPath()
+    const onPopState = () => {
+      pendingUrlTeamSlug.current = getTeamSlugFromPath()
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingUrlTeamSlug.current || teams.length === 0) return
+    const teamFromUrl = teams.find(team => team.slug === pendingUrlTeamSlug.current)
+    if (!teamFromUrl || teamFromUrl.id === activeTeamId) {
+      pendingUrlTeamSlug.current = null
+      return
+    }
+    void switchTeam(teamFromUrl.id)
+    pendingUrlTeamSlug.current = null
+  }, [activeTeamId, switchTeam, teams])
+
+  useEffect(() => {
+    if (!activeTeam?.slug) return
+    const targetPath = `/team/${encodeURIComponent(activeTeam.slug)}`
+    if (window.location.pathname !== targetPath) {
+      window.history.replaceState({}, '', targetPath)
+    }
+  }, [activeTeam?.slug])
 
   const filteredEmails = useMemo(() => {
     let result = emails
@@ -224,7 +259,7 @@ export default function App() {
         ) : (
           <main className="flex-1 overflow-hidden flex flex-col">
             {activeNav === 'analytics'
-              ? <Analytics emails={emails} campaigns={campaigns} />
+              ? <Analytics emails={emails} campaigns={campaigns} profile={profile} />
               : activeNav === 'pipeline' || state.view === 'pipeline'
               ? <PipelineView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} onEmailClick={setSelectedEmail} />
               : state.view === 'list'
@@ -246,16 +281,19 @@ export default function App() {
         )}
       </div>
 
-      <TeamDirectory
-        teams={teams}
-        activeTeamId={activeTeamId}
-        isSuperadmin={profile.isSuperadmin}
-        orgCount={orgCount}
-        onSwitchTeam={teamId => { void switchTeam(teamId) }}
-        onCreateTeam={teamName => { void createTeam(teamName) }}
-        onJoinTeam={teamSlug => { void joinTeam(teamSlug) }}
-        onLeaveCurrentTeam={() => { void leaveCurrentTeam() }}
-      />
+      {activeNav === 'settings' && (
+        <TeamDirectory
+          teams={teams}
+          allTeams={allTeams}
+          activeTeamId={activeTeamId}
+          isSuperadmin={profile.isSuperadmin}
+          orgCount={orgCount}
+          onSwitchTeam={teamId => { void switchTeam(teamId) }}
+          onCreateTeam={teamName => { void createTeam(teamName) }}
+          onJoinTeam={teamSlug => { void joinTeam(teamSlug) }}
+          onLeaveCurrentTeam={() => { void leaveCurrentTeam() }}
+        />
+      )}
 
       {selectedEmail && (
         <EmailModal

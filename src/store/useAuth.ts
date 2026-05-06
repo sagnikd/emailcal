@@ -39,6 +39,7 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
+  const [allTeams, setAllTeams] = useState<Team[]>([])
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +58,7 @@ export function useAuth() {
     if (!nextSession?.user) {
       setProfile(null)
       setTeams([])
+      setAllTeams([])
       setActiveTeamId(null)
       setOrgCount(0)
       setIsLoading(false)
@@ -131,30 +133,29 @@ export function useAuth() {
       }))
 
       setTeams(mappedTeams)
+      setAllTeams(mappedTeams)
       setOrgCount(mappedTeams.length)
       setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
       setIsLoading(false)
       return
     }
 
-    const [{ data: memberships, error: membershipError }, { data: teamMemberRows, error: memberCountError }] = await Promise.all([
+    const [{ data: memberships, error: membershipError }, { data: allTeamRows, error: allTeamError }] = await Promise.all([
       supabase
         .from('team_members')
         .select('team_id, teams!inner(id, name, slug)')
         .eq('user_id', user.id),
-      supabase.from('team_members').select('team_id, user_id'),
+      supabase
+        .from('teams')
+        .select('id, name, slug, created_at')
+        .order('created_at'),
     ])
 
-    if (membershipError || memberCountError) {
-      setError(membershipError?.message ?? memberCountError?.message ?? 'Could not load your team workspace.')
+    if (membershipError || allTeamError) {
+      setError(membershipError?.message ?? allTeamError?.message ?? 'Could not load your team workspace.')
       setIsLoading(false)
       return
     }
-
-    const counts = new Map<string, number>()
-    ;((teamMemberRows as TeamMemberRow[] | null) ?? []).forEach(member => {
-      counts.set(member.team_id, (counts.get(member.team_id) ?? 0) + 1)
-    })
 
     const rawMemberships = ((memberships as Array<{ team_id: string; teams: TeamRow[] | TeamRow }> | null) ?? [])
 
@@ -167,13 +168,21 @@ export function useAuth() {
           id: team.id,
           name: team.name,
           slug: team.slug,
-          memberCount: counts.get(row.team_id) ?? 0,
+          memberCount: 0,
         }
       })
       .filter((team): team is Team => team !== null)
 
+    const mappedAllTeams = ((allTeamRows as TeamRow[] | null) ?? []).map(team => ({
+      id: team.id,
+      name: team.name,
+      slug: team.slug,
+      memberCount: 0,
+    }))
+
     setTeams(mappedTeams)
-    setOrgCount(mappedTeams.length)
+    setAllTeams(mappedAllTeams)
+    setOrgCount(mappedAllTeams.length)
     setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
     setIsLoading(false)
   }, [])
@@ -202,8 +211,18 @@ export function useAuth() {
     if (!supabase) return
     setError(null)
     setInfo(null)
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError) setError(signInError.message)
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInError) {
+      setError(signInError.message)
+      return
+    }
+
+    if (data.session) {
+      const { error: trackError } = await supabase.rpc('record_login_event')
+      if (trackError) {
+        console.warn('Could not record login event:', trackError.message)
+      }
+    }
   }, [])
 
   const signUp = useCallback(async (email: string, password: string, fullName: string) => {
@@ -311,6 +330,7 @@ export function useAuth() {
     session,
     profile,
     teams,
+    allTeams,
     activeTeamId,
     isLoading,
     error,

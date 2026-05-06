@@ -5,6 +5,7 @@ const NAV = [
   { id: 'home', label: 'Calendar', icon: '📅' },
   { id: 'pipeline', label: 'Pipeline', icon: '📋' },
   { id: 'analytics', label: 'Analytics', icon: '📊' },
+  { id: 'settings', label: 'Settings', icon: '⚙️' },
 ]
 
 interface Props {

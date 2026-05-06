@@ -1,8 +1,11 @@
-import { EmailCard, Campaign } from '../types'
+import { useEffect, useState } from 'react'
+import { EmailCard, Campaign, Profile } from '../types'
+import { supabase } from '../lib/supabase'
 
 interface Props {
   emails: EmailCard[]
   campaigns: Campaign[]
+  profile: Profile
 }
 
 const METRICS = [
@@ -12,7 +15,38 @@ const METRICS = [
   { label: 'In Review', key: 'review', color: 'bg-amber-500' },
 ]
 
-export default function Analytics({ emails, campaigns }: Props) {
+type UserActivity = {
+  user_id: string
+  email: string
+  full_name: string
+  login_count: number
+  last_login_at: string | null
+  team_names: string[]
+}
+
+export default function Analytics({ emails, campaigns, profile }: Props) {
+  const [activityRows, setActivityRows] = useState<UserActivity[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!profile.isSuperadmin || !supabase) return
+    const client = supabase
+
+    const loadActivity = async () => {
+      setActivityLoading(true)
+      setActivityError(null)
+      const { data, error } = await client.rpc('get_superadmin_user_activity')
+      if (error) {
+        setActivityError(error.message)
+      } else {
+        setActivityRows((data as UserActivity[]) ?? [])
+      }
+      setActivityLoading(false)
+    }
+
+    void loadActivity()
+  }, [profile.isSuperadmin])
   const stats = {
     total: emails.length,
     sent: emails.filter(e => e.status === 'Sent').length,
@@ -112,6 +146,47 @@ export default function Analytics({ emails, campaigns }: Props) {
             })}
           </div>
         </div>
+
+        {profile.isSuperadmin && (
+          <div className="bg-white rounded-xl border border-slate-200 p-5 col-span-2">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4">Team Login Activity</h3>
+            {activityLoading && <p className="text-sm text-slate-500">Loading user activity...</p>}
+            {activityError && <p className="text-sm text-rose-600">{activityError}</p>}
+            {!activityLoading && !activityError && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-200">
+                      <th className="py-2 pr-3 font-medium">User</th>
+                      <th className="py-2 pr-3 font-medium">Email</th>
+                      <th className="py-2 pr-3 font-medium">Login Count</th>
+                      <th className="py-2 pr-3 font-medium">Last Login</th>
+                      <th className="py-2 font-medium">Teams</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityRows.map(row => (
+                      <tr key={row.user_id} className="border-b border-slate-100 align-top">
+                        <td className="py-2 pr-3 text-slate-800 font-medium">{row.full_name}</td>
+                        <td className="py-2 pr-3 text-slate-600">{row.email}</td>
+                        <td className="py-2 pr-3 text-slate-800">{row.login_count}</td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {row.last_login_at ? new Date(row.last_login_at).toLocaleString() : 'No login tracked yet'}
+                        </td>
+                        <td className="py-2 text-slate-600">
+                          {row.team_names.length > 0 ? row.team_names.join(', ') : 'No team'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {activityRows.length === 0 && (
+                  <p className="text-sm text-slate-500 py-3">No users found yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

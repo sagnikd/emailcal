@@ -31,6 +31,16 @@ create table if not exists team_members (
 
 create index if not exists team_members_user_id_idx on team_members(user_id);
 
+create table if not exists user_login_events (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  team_id     uuid references teams(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists user_login_events_user_id_idx on user_login_events(user_id);
+create index if not exists user_login_events_created_at_idx on user_login_events(created_at desc);
+
 -- ─── Existing Workspace Tables ───────────────────────────────────────────────
 create table if not exists segments (
   id          uuid primary key default gen_random_uuid(),
@@ -364,6 +374,62 @@ begin
 end;
 $$;
 
+create or replace function record_login_event()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_team_id uuid;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select current_team_id
+  into v_team_id
+  from profiles
+  where user_id = v_user_id;
+
+  insert into user_login_events (user_id, team_id)
+  values (v_user_id, v_team_id);
+end;
+$$;
+
+create or replace function get_superadmin_user_activity()
+returns table (
+  user_id uuid,
+  email text,
+  full_name text,
+  login_count bigint,
+  last_login_at timestamptz,
+  team_names text[]
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    p.user_id,
+    p.email,
+    p.full_name,
+    count(ule.id)::bigint as login_count,
+    max(ule.created_at) as last_login_at,
+    coalesce(
+      array_agg(distinct t.name) filter (where t.name is not null),
+      array[]::text[]
+    ) as team_names
+  from profiles p
+  left join user_login_events ule on ule.user_id = p.user_id
+  left join team_members tm on tm.user_id = p.user_id
+  left join teams t on t.id = tm.team_id
+  where is_superadmin()
+  group by p.user_id, p.email, p.full_name
+  order by max(ule.created_at) desc nulls last, p.email asc;
+$$;
+
 drop function if exists rename_segment_in_campaigns(text, text);
 create or replace function rename_segment_in_campaigns(p_team_id uuid, old_name text, new_name text)
 returns void
@@ -393,6 +459,8 @@ grant execute on function create_team_for_current_user(text) to authenticated;
 grant execute on function join_team_by_slug(text) to authenticated;
 grant execute on function set_current_team(uuid) to authenticated;
 grant execute on function leave_team(uuid) to authenticated;
+grant execute on function record_login_event() to authenticated;
+grant execute on function get_superadmin_user_activity() to authenticated;
 grant execute on function rename_segment_in_campaigns(uuid, text, text) to authenticated;
 grant execute on function rename_segment_in_emails(uuid, text, text) to authenticated;
 
@@ -404,6 +472,7 @@ alter table segments enable row level security;
 alter table campaigns enable row level security;
 alter table emails enable row level security;
 alter table comments enable row level security;
+alter table user_login_events enable row level security;
 
 drop policy if exists "profiles_select" on profiles;
 create policy "profiles_select" on profiles
@@ -430,7 +499,7 @@ with check (
 drop policy if exists "teams_select" on teams;
 create policy "teams_select" on teams
 for select
-using (user_belongs_to_team(id));
+using (auth.role() = 'authenticated');
 
 drop policy if exists "teams_insert" on teams;
 create policy "teams_insert" on teams
@@ -446,6 +515,16 @@ drop policy if exists "team_members_insert" on team_members;
 create policy "team_members_insert" on team_members
 for insert
 with check (is_superadmin() or auth.uid() = user_id);
+
+drop policy if exists "user_login_events_select" on user_login_events;
+create policy "user_login_events_select" on user_login_events
+for select
+using (auth.uid() = user_id or is_superadmin());
+
+drop policy if exists "user_login_events_insert" on user_login_events;
+create policy "user_login_events_insert" on user_login_events
+for insert
+with check (auth.uid() = user_id);
 
 drop policy if exists "segments_select" on segments;
 create policy "segments_select" on segments
