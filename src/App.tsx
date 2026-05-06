@@ -26,10 +26,14 @@ export default function App() {
     isLoading: authLoading,
     error: authError,
     info,
+    orgCount,
     signIn,
     signUp,
     signOut,
     switchTeam,
+    createTeam,
+    joinTeam,
+    leaveCurrentTeam,
   } = auth
 
   const {
@@ -99,7 +103,7 @@ export default function App() {
     return (
       <AuthScreen
         onSignIn={(email, password) => { void signIn(email, password) }}
-        onSignUp={(email, password, fullName, teamName) => { void signUp(email, password, fullName, teamName) }}
+        onSignUp={(email, password, fullName) => { void signUp(email, password, fullName) }}
         error={authError}
         info={info}
         isLoading={authLoading}
@@ -167,7 +171,7 @@ export default function App() {
                   {profile.isSuperadmin ? 'Superadmin' : activeTeam?.name ?? 'No workspace selected'}
                 </div>
               </div>
-              {profile.isSuperadmin && teams.length > 0 && (
+              {teams.length > 0 && (
                 <select
                   value={activeTeamId ?? ''}
                   onChange={e => { void switchTeam(e.target.value) }}
@@ -213,9 +217,7 @@ export default function App() {
             <div className="max-w-md text-center rounded-3xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
               <div className="text-lg font-semibold text-slate-800">No team workspace selected</div>
               <p className="mt-2 text-sm text-slate-500">
-                {profile.isSuperadmin
-                  ? 'Pick a team from the directory to inspect its workspace.'
-                  : 'Your account does not belong to a team yet.'}
+                Create a team or join an existing team from the directory.
               </p>
             </div>
           </div>
@@ -248,7 +250,11 @@ export default function App() {
         teams={teams}
         activeTeamId={activeTeamId}
         isSuperadmin={profile.isSuperadmin}
+        orgCount={orgCount}
         onSwitchTeam={teamId => { void switchTeam(teamId) }}
+        onCreateTeam={teamName => { void createTeam(teamName) }}
+        onJoinTeam={teamSlug => { void joinTeam(teamSlug) }}
+        onLeaveCurrentTeam={() => { void leaveCurrentTeam() }}
       />
 
       {selectedEmail && (

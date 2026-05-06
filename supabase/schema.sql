@@ -230,6 +230,140 @@ begin
 end;
 $$;
 
+create or replace function create_team_for_current_user(p_team_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_team_id uuid;
+  v_slug_base text;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  v_slug_base := regexp_replace(lower(trim(p_team_name)), '[^a-z0-9]+', '-', 'g');
+  v_slug_base := trim(both '-' from v_slug_base);
+  if v_slug_base = '' then
+    v_slug_base := 'team';
+  end if;
+
+  insert into teams (name, slug, created_by)
+  values (
+    trim(p_team_name),
+    v_slug_base || '-' || substr(md5(gen_random_uuid()::text), 1, 6),
+    v_user_id
+  )
+  returning id into v_team_id;
+
+  insert into team_members (team_id, user_id, role)
+  values (v_team_id, v_user_id, 'owner')
+  on conflict (team_id, user_id) do nothing;
+
+  update profiles
+  set current_team_id = v_team_id
+  where user_id = v_user_id;
+
+  perform seed_team_workspace(v_team_id);
+
+  return v_team_id;
+end;
+$$;
+
+create or replace function join_team_by_slug(p_slug text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_team_id uuid;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select id into v_team_id
+  from teams
+  where lower(slug) = lower(trim(p_slug))
+  limit 1;
+
+  if v_team_id is null then
+    raise exception 'Team not found';
+  end if;
+
+  insert into team_members (team_id, user_id, role)
+  values (v_team_id, v_user_id, 'member')
+  on conflict (team_id, user_id) do nothing;
+
+  update profiles
+  set current_team_id = v_team_id
+  where user_id = v_user_id;
+
+  return v_team_id;
+end;
+$$;
+
+create or replace function set_current_team(p_team_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if not user_belongs_to_team(p_team_id) then
+    raise exception 'You are not a member of this team';
+  end if;
+
+  update profiles
+  set current_team_id = p_team_id
+  where user_id = v_user_id;
+
+  return p_team_id;
+end;
+$$;
+
+create or replace function leave_team(p_team_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_next_team_id uuid;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  delete from team_members
+  where team_id = p_team_id
+    and user_id = v_user_id;
+
+  select team_id into v_next_team_id
+  from team_members
+  where user_id = v_user_id
+  order by created_at
+  limit 1;
+
+  update profiles
+  set current_team_id = v_next_team_id
+  where user_id = v_user_id
+    and current_team_id = p_team_id;
+end;
+$$;
+
 drop function if exists rename_segment_in_campaigns(text, text);
 create or replace function rename_segment_in_campaigns(p_team_id uuid, old_name text, new_name text)
 returns void
@@ -255,6 +389,10 @@ $$;
 grant execute on function is_superadmin() to authenticated;
 grant execute on function user_belongs_to_team(uuid) to authenticated;
 grant execute on function bootstrap_team_signup(text, text) to authenticated;
+grant execute on function create_team_for_current_user(text) to authenticated;
+grant execute on function join_team_by_slug(text) to authenticated;
+grant execute on function set_current_team(uuid) to authenticated;
+grant execute on function leave_team(uuid) to authenticated;
 grant execute on function rename_segment_in_campaigns(uuid, text, text) to authenticated;
 grant execute on function rename_segment_in_emails(uuid, text, text) to authenticated;
 

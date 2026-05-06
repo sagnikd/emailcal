@@ -43,6 +43,7 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [orgCount, setOrgCount] = useState(0)
 
   const loadWorkspaceContext = useCallback(async (nextSession: Session | null) => {
     if (!supabase) {
@@ -57,6 +58,7 @@ export function useAuth() {
       setProfile(null)
       setTeams([])
       setActiveTeamId(null)
+      setOrgCount(0)
       setIsLoading(false)
       return
     }
@@ -129,6 +131,7 @@ export function useAuth() {
       }))
 
       setTeams(mappedTeams)
+      setOrgCount(mappedTeams.length)
       setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
       setIsLoading(false)
       return
@@ -154,21 +157,6 @@ export function useAuth() {
     })
 
     const rawMemberships = ((memberships as Array<{ team_id: string; teams: TeamRow[] | TeamRow }> | null) ?? [])
-    if (rawMemberships.length === 0) {
-      const { error: bootstrapError } = await supabase.rpc('bootstrap_team_signup', {
-        p_team_name: 'HCL Software Workspace',
-        p_full_name: nextProfile.fullName || fallbackName,
-      })
-
-      if (bootstrapError) {
-        setError(bootstrapError.message)
-        setIsLoading(false)
-        return
-      }
-
-      await loadWorkspaceContext(nextSession)
-      return
-    }
 
     const mappedTeams = rawMemberships
       .map(row => {
@@ -185,6 +173,7 @@ export function useAuth() {
       .filter((team): team is Team => team !== null)
 
     setTeams(mappedTeams)
+    setOrgCount(mappedTeams.length)
     setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
     setIsLoading(false)
   }, [])
@@ -217,7 +206,7 @@ export function useAuth() {
     if (signInError) setError(signInError.message)
   }, [])
 
-  const signUp = useCallback(async (email: string, password: string, fullName: string, teamName: string) => {
+  const signUp = useCallback(async (email: string, password: string, fullName: string) => {
     if (!supabase) return
     setError(null)
     setInfo(null)
@@ -247,16 +236,6 @@ export function useAuth() {
       return
     }
 
-    const { error: bootstrapError } = await supabase.rpc('bootstrap_team_signup', {
-      p_team_name: teamName,
-      p_full_name: fullName,
-    })
-
-    if (bootstrapError) {
-      setError(bootstrapError.message)
-      return
-    }
-
     await loadWorkspaceContext(data.session)
   }, [loadWorkspaceContext])
 
@@ -269,19 +248,64 @@ export function useAuth() {
   const switchTeam = useCallback(async (teamId: string) => {
     if (!supabase || !session?.user || !profile) return
 
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ current_team_id: teamId })
-      .eq('user_id', session.user.id)
+    const { error: switchError } = await supabase.rpc('set_current_team', { p_team_id: teamId })
 
-    if (updateError) {
-      setError(updateError.message)
+    if (switchError) {
+      setError(switchError.message)
       return
     }
 
     setProfile({ ...profile, currentTeamId: teamId })
     setActiveTeamId(teamId)
   }, [profile, session])
+
+  const createTeam = useCallback(async (teamName: string) => {
+    if (!supabase || !session) return
+    const trimmed = teamName.trim()
+    if (!trimmed) return
+    setError(null)
+
+    const { error: createError } = await supabase.rpc('create_team_for_current_user', {
+      p_team_name: trimmed,
+    })
+
+    if (createError) {
+      setError(createError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [loadWorkspaceContext, session])
+
+  const joinTeam = useCallback(async (teamSlug: string) => {
+    if (!supabase || !session) return
+    const trimmed = teamSlug.trim()
+    if (!trimmed) return
+    setError(null)
+
+    const { error: joinError } = await supabase.rpc('join_team_by_slug', { p_slug: trimmed })
+
+    if (joinError) {
+      setError(joinError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [loadWorkspaceContext, session])
+
+  const leaveCurrentTeam = useCallback(async () => {
+    if (!supabase || !session || !activeTeamId) return
+    setError(null)
+
+    const { error: leaveError } = await supabase.rpc('leave_team', { p_team_id: activeTeamId })
+
+    if (leaveError) {
+      setError(leaveError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [activeTeamId, loadWorkspaceContext, session])
 
   return {
     session,
@@ -291,10 +315,14 @@ export function useAuth() {
     isLoading,
     error,
     info,
+    orgCount,
     signIn,
     signUp,
     signOut,
     switchTeam,
+    createTeam,
+    joinTeam,
+    leaveCurrentTeam,
     reload: () => loadWorkspaceContext(session),
   }
 }

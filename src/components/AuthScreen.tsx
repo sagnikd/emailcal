@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 interface Props {
   onSignIn: (email: string, password: string) => void
-  onSignUp: (email: string, password: string, fullName: string, teamName: string) => void
+  onSignUp: (email: string, password: string, fullName: string) => void
   error: string | null
   info: string | null
   isLoading: boolean
@@ -13,9 +13,7 @@ export default function AuthScreen({ onSignIn, onSignUp, error, info, isLoading 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
-  const [teamName, setTeamName] = useState('')
-
-  const canSubmit = email.trim() && password.trim() && (mode === 'signIn' || (fullName.trim() && teamName.trim()))
+  const canSubmit = email.trim() && password.trim() && (mode === 'signIn' || fullName.trim())
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_32%),linear-gradient(180deg,_#f8fafc_0%,_#eef4ff_100%)] flex items-center justify-center p-6">
@@ -27,7 +25,7 @@ export default function AuthScreen({ onSignIn, onSignUp, error, info, isLoading 
             </div>
             <h1 className="mt-8 text-4xl font-semibold leading-tight">Team workspaces for email planning, reviews, and launch calendars.</h1>
             <p className="mt-5 text-sm leading-6 text-slate-300 max-w-md">
-              Every sign-up gets its own team workspace. Sign back in to reopen the same workspace, while the superadmin account can review every team across the organization.
+              New users can sign in and then choose to create a new team or join an existing one. Superadmin can review team creation across the organization.
             </p>
           </div>
 
@@ -68,10 +66,6 @@ export default function AuthScreen({ onSignIn, onSignUp, error, info, isLoading 
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Full Name</label>
                   <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400" value={fullName} onChange={e => setFullName(e.target.value)} />
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Team Name</label>
-                  <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400" value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. Growth Marketing" />
-                </div>
               </>
             )}
 
@@ -95,11 +89,11 @@ export default function AuthScreen({ onSignIn, onSignUp, error, info, isLoading 
               disabled={!canSubmit || isLoading}
               onClick={() => {
                 if (mode === 'signIn') onSignIn(email, password)
-                else onSignUp(email, password, fullName, teamName)
+                else onSignUp(email, password, fullName)
               }}
               className="w-full rounded-xl bg-blue-600 text-white py-3 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {isLoading ? 'Working...' : mode === 'signIn' ? 'Sign In' : 'Create Account and Team'}
+              {isLoading ? 'Working...' : mode === 'signIn' ? 'Sign In' : 'Create Account'}
             </button>
           </div>
         </div>

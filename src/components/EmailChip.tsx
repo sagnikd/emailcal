@@ -24,7 +24,7 @@ export default function EmailChip({ email, campaign, hasConflict, onClick }: Pro
       className="w-full text-left group"
     >
       <div
-        className={`rounded-md px-2 py-1 text-xs font-medium leading-tight mb-0.5 border-l-2 transition-all hover:shadow-sm ${STATUS_COLORS[email.status]}`}
+        className={`rounded-md px-2 py-1 text-xs font-medium leading-tight mb-0.5 border-l-8 transition-all hover:shadow-sm ${STATUS_COLORS[email.status]}`}
         style={{ borderLeftColor: campaign?.color ?? '#94a3b8' }}
       >
         <div className="flex items-start gap-1">
