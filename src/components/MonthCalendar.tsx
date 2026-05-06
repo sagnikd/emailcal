@@ -5,6 +5,7 @@ import {
 } from 'date-fns'
 import { EmailCard, Campaign } from '../types'
 import EmailChip from './EmailChip'
+import { getHolidaysForDate, Holiday } from '../data/holidays'
 
 interface Props {
   currentDate: Date
@@ -20,6 +21,23 @@ interface Props {
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function HolidayPill({ holiday }: { holiday: Holiday }) {
+  const isUS = holiday.country === 'US'
+  return (
+    <div
+      title={`${isUS ? '🇺🇸' : '🇮🇳'} ${holiday.name}`}
+      className={`flex items-center gap-1 rounded px-1 py-0.5 text-xs leading-tight truncate ${
+        isUS
+          ? 'bg-blue-50 text-blue-700 border border-blue-100'
+          : 'bg-orange-50 text-orange-700 border border-orange-100'
+      }`}
+    >
+      <span className="text-xs leading-none shrink-0">{isUS ? '🇺🇸' : '🇮🇳'}</span>
+      <span className="truncate">{holiday.name}</span>
+    </div>
+  )
+}
 
 export default function MonthCalendar({ currentDate, emails, campaigns, selectedCampaignId, getConflicts, onEmailClick, onDayClick, onPrev, onNext, onToday }: Props) {
   const days = useMemo(() => {
@@ -43,6 +61,11 @@ export default function MonthCalendar({ currentDate, emails, campaigns, selected
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-slate-800">{format(currentDate, 'MMMM yyyy')}</h2>
           <button onClick={onToday} className="px-3 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">Today</button>
+          {/* Legend */}
+          <div className="flex items-center gap-3 ml-2">
+            <span className="flex items-center gap-1 text-xs text-slate-500"><span>🇺🇸</span> US Holiday</span>
+            <span className="flex items-center gap-1 text-xs text-slate-500"><span>🇮🇳</span> India Holiday</span>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button onClick={onPrev} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors">‹</button>
@@ -63,12 +86,18 @@ export default function MonthCalendar({ currentDate, emails, campaigns, selected
           const dayEmails = emailsForDay(day)
           const inMonth = isSameMonth(day, currentDate)
           const today = isToday(day)
+          const holidays = getHolidaysForDate(format(day, 'yyyy-MM-dd'))
+          const hasHoliday = holidays.length > 0
+
           return (
             <div
               key={i}
-              className={`border-b border-slate-100 p-1.5 flex flex-col cursor-pointer transition-colors group ${inMonth ? 'bg-white hover:bg-blue-50/30' : 'bg-slate-50/60'}`}
+              className={`border-b border-slate-100 p-1.5 flex flex-col cursor-pointer transition-colors group ${
+                hasHoliday && inMonth ? 'bg-amber-50/40 hover:bg-amber-50/70' : inMonth ? 'bg-white hover:bg-blue-50/30' : 'bg-slate-50/60'
+              }`}
               onClick={() => onDayClick(day)}
             >
+              {/* Date number row */}
               <div className="flex items-center justify-between mb-1">
                 <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium ${today ? 'bg-blue-600 text-white' : inMonth ? 'text-slate-700' : 'text-slate-300'}`}>
                   {format(day, 'd')}
@@ -77,6 +106,17 @@ export default function MonthCalendar({ currentDate, emails, campaigns, selected
                   <span className="text-xs text-slate-400 group-hover:text-blue-500">{dayEmails.length}</span>
                 )}
               </div>
+
+              {/* Holiday pills */}
+              {inMonth && holidays.length > 0 && (
+                <div className="space-y-0.5 mb-1" onClick={e => e.stopPropagation()}>
+                  {holidays.map((h, idx) => (
+                    <HolidayPill key={idx} holiday={h} />
+                  ))}
+                </div>
+              )}
+
+              {/* Email chips */}
               <div className="space-y-0.5 overflow-hidden flex-1">
                 {dayEmails.slice(0, 3).map(email => (
                   <EmailChip
