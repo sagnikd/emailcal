@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Session } from '@supabase/supabase-js'
-import { Profile, Team } from '../types'
+import { Profile, Team, JoinRequest, PendingRequest } from '../types'
 import { supabase } from '../lib/supabase'
 
 const SUPERADMIN_EMAIL = 'datta.sagnik129@gmail.com'
@@ -45,6 +45,8 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [orgCount, setOrgCount] = useState(0)
+  const [myJoinRequests, setMyJoinRequests] = useState<JoinRequest[]>([])
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
 
   const loadWorkspaceContext = useCallback(async (nextSession: Session | null) => {
     if (!supabase) {
@@ -61,6 +63,8 @@ export function useAuth() {
       setAllTeams([])
       setActiveTeamId(null)
       setOrgCount(0)
+      setMyJoinRequests([])
+      setPendingRequests([])
       setIsLoading(false)
       return
     }
@@ -136,6 +140,12 @@ export function useAuth() {
       setAllTeams(mappedTeams)
       setOrgCount(mappedTeams.length)
       setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
+      setMyJoinRequests([])
+
+      // Load pending requests (admin can approve)
+      const { data: pendingData } = await supabase.rpc('get_pending_join_requests')
+      setPendingRequests((pendingData as PendingRequest[] | null) ?? [])
+
       setIsLoading(false)
       return
     }
@@ -184,6 +194,15 @@ export function useAuth() {
     setAllTeams(mappedAllTeams)
     setOrgCount(mappedAllTeams.length)
     setActiveTeamId(nextProfile.currentTeamId ?? mappedTeams[0]?.id ?? null)
+
+    // Load this user's own join requests and pending requests they can approve
+    const [{ data: myReqData }, { data: pendingData }] = await Promise.all([
+      supabase.rpc('get_my_join_requests'),
+      supabase.rpc('get_pending_join_requests'),
+    ])
+    setMyJoinRequests((myReqData as JoinRequest[] | null) ?? [])
+    setPendingRequests((pendingData as PendingRequest[] | null) ?? [])
+
     setIsLoading(false)
   }, [])
 
@@ -234,6 +253,7 @@ export function useAuth() {
       email,
       password,
       options: {
+        emailRedirectTo: window.location.origin,
         data: {
           full_name: fullName,
         },
@@ -241,9 +261,21 @@ export function useAuth() {
     })
 
     if (signUpError) {
+      // If the auth user was still created despite the error (e.g. a DB trigger warning),
+      // treat it as a successful signup requiring email confirmation.
+      if (data?.user) {
+        console.warn('Signup non-fatal error:', signUpError.message)
+        setInfo('Account created. Complete email confirmation, then sign in to join a team workspace.')
+        return
+      }
+
       const message = signUpError.message.toLowerCase()
       if (message.includes('email rate limit exceeded')) {
-        setError('Signup email sending is being throttled by Supabase right now. If the account already exists, try Sign In. Otherwise wait a bit and try again, or disable email confirmation for this project.')
+        setError('Signup email sending is being throttled. If the account already exists, try Sign In.')
+      } else if (message.includes('already registered') || message.includes('already exists')) {
+        setError('An account with this email already exists. Try signing in instead.')
+      } else if (message.includes('database error')) {
+        setError('There was a configuration issue on the server. Please ask your admin to check Supabase → Authentication → Hooks for any failing hooks, or contact support.')
       } else {
         setError(signUpError.message)
       }
@@ -251,7 +283,7 @@ export function useAuth() {
     }
 
     if (!data.session) {
-      setInfo('Account created. Complete email confirmation, then sign in to create your team workspace.')
+      setInfo('Account created. Complete email confirmation, then sign in to join a team workspace.')
       return
     }
 
@@ -312,6 +344,48 @@ export function useAuth() {
     await loadWorkspaceContext(session)
   }, [loadWorkspaceContext, session])
 
+  const requestJoinTeam = useCallback(async (teamId: string) => {
+    if (!supabase || !session) return
+    setError(null)
+
+    const { error: reqError } = await supabase.rpc('request_to_join_team', { p_team_id: teamId })
+
+    if (reqError) {
+      setError(reqError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [loadWorkspaceContext, session])
+
+  const approveRequest = useCallback(async (requestId: string) => {
+    if (!supabase || !session) return
+    setError(null)
+
+    const { error: approveError } = await supabase.rpc('approve_join_request', { p_request_id: requestId })
+
+    if (approveError) {
+      setError(approveError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [loadWorkspaceContext, session])
+
+  const rejectRequest = useCallback(async (requestId: string) => {
+    if (!supabase || !session) return
+    setError(null)
+
+    const { error: rejectError } = await supabase.rpc('reject_join_request', { p_request_id: requestId })
+
+    if (rejectError) {
+      setError(rejectError.message)
+      return
+    }
+
+    await loadWorkspaceContext(session)
+  }, [loadWorkspaceContext, session])
+
   const leaveCurrentTeam = useCallback(async () => {
     if (!supabase || !session || !activeTeamId) return
     setError(null)
@@ -336,12 +410,17 @@ export function useAuth() {
     error,
     info,
     orgCount,
+    myJoinRequests,
+    pendingRequests,
     signIn,
     signUp,
     signOut,
     switchTeam,
     createTeam,
     joinTeam,
+    requestJoinTeam,
+    approveRequest,
+    rejectRequest,
     leaveCurrentTeam,
     reload: () => loadWorkspaceContext(session),
   }

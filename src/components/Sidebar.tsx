@@ -25,6 +25,7 @@ interface Props {
   activeNav: string
   onNavChange: (id: string) => void
   onAddCampaign: () => void
+  pendingRequestCount?: number
 }
 
 function PencilIcon() {
@@ -38,7 +39,7 @@ function PencilIcon() {
 export default function Sidebar({
   campaigns, emails, segments, currentUserName, currentUserLabel, selectedCampaignId, selectedSegment,
   onSelectCampaign, onSelectSegment, onAddSegment, onRenameSegment, onRenameCampaign, onAddEmailToCampaign,
-  activeNav, onNavChange, onAddCampaign,
+  activeNav, onNavChange, onAddCampaign, pendingRequestCount = 0,
 }: Props) {
   const [addingSegment, setAddingSegment] = useState(false)
   const [newSegment, setNewSegment] = useState('')
@@ -104,7 +105,13 @@ export default function Sidebar({
               activeNav === n.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            <span>{n.icon}</span>{n.label}
+            <span>{n.icon}</span>
+            <span className="flex-1">{n.label}</span>
+            {n.id === 'settings' && pendingRequestCount > 0 && (
+              <span className="rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                {pendingRequestCount}
+              </span>
+            )}
           </button>
         ))}
       </nav>

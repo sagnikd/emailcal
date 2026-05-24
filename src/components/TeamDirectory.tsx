@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Team } from '../types'
+import { Team, PendingRequest } from '../types'
 
 interface Props {
   teams: Team[]
@@ -7,9 +7,12 @@ interface Props {
   activeTeamId: string | null
   isSuperadmin: boolean
   orgCount: number
+  pendingRequests: PendingRequest[]
   onSwitchTeam: (teamId: string) => void
   onCreateTeam: (teamName: string) => void
-  onJoinTeam: (teamSlug: string) => void
+  onRequestJoinTeam: (teamId: string) => void
+  onApproveRequest: (requestId: string) => void
+  onRejectRequest: (requestId: string) => void
   onLeaveCurrentTeam: () => void
 }
 
@@ -19,20 +22,33 @@ export default function TeamDirectory({
   activeTeamId,
   isSuperadmin,
   orgCount,
+  pendingRequests,
   onSwitchTeam,
   onCreateTeam,
-  onJoinTeam,
+  onRequestJoinTeam,
+  onApproveRequest,
+  onRejectRequest,
   onLeaveCurrentTeam,
 }: Props) {
   const [newTeamName, setNewTeamName] = useState('')
-  const [joinSlug, setJoinSlug] = useState('')
+  const [processingId, setProcessingId] = useState<string | null>(null)
+
+  const handleApprove = async (id: string) => {
+    setProcessingId(id)
+    onApproveRequest(id)
+  }
+
+  const handleReject = async (id: string) => {
+    setProcessingId(id)
+    onRejectRequest(id)
+  }
 
   return (
-    <div className="w-80 shrink-0 border-l border-slate-200 bg-white/90 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="w-96 shrink-0 border-l border-slate-200 bg-white/90 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="mb-4">
         <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{isSuperadmin ? 'Superadmin' : 'Workspace'}</div>
         <h2 className="mt-1 text-lg font-semibold text-slate-800">Team Directory</h2>
-        <p className="mt-1 text-sm text-slate-500">Create, join, leave, and switch teams at any time.</p>
+        <p className="mt-1 text-sm text-slate-500">Manage your team workspaces.</p>
         {isSuperadmin && (
           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
             Organizations created: <span className="font-semibold">{orgCount}</span>
@@ -40,7 +56,46 @@ export default function TeamDirectory({
         )}
       </div>
 
+      {/* Pending Join Requests (visible to admins/members) */}
+      {pendingRequests.length > 0 && (
+        <div className="mb-5">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+            Join Requests
+            <span className="rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">
+              {pendingRequests.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {pendingRequests.map(req => (
+              <div key={req.id} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="text-sm font-semibold text-slate-800">{req.user_full_name}</div>
+                <div className="text-xs text-slate-500">{req.user_email}</div>
+                <div className="text-xs text-amber-700 mt-0.5">Wants to join <strong>{req.team_name}</strong></div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleApprove(req.id)}
+                    disabled={processingId === req.id}
+                    className="flex-1 text-xs py-1.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleReject(req.id)}
+                    disabled={processingId === req.id}
+                    className="flex-1 text-xs py-1.5 rounded-lg border border-rose-200 text-rose-700 font-medium hover:bg-rose-50 disabled:opacity-50 transition-colors"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* My Teams */}
       <div className="space-y-2 mb-5">
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">My Teams</div>
         {teams.map(team => (
           <button
             key={team.id}
@@ -62,15 +117,16 @@ export default function TeamDirectory({
 
         {teams.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            You do not belong to any team yet. Create one or join by slug.
+            You do not belong to any team yet.
           </div>
         )}
       </div>
 
+      {/* All Organizations */}
       <div className="space-y-2 mb-5 border-t border-slate-100 pt-4">
-        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Available Organizations</div>
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">All Workspaces</div>
         {allTeams.map(team => {
-          const isMember = teams.some(memberTeam => memberTeam.id === team.id)
+          const isMember = teams.some(t => t.id === team.id)
           const isActive = activeTeamId === team.id
           return (
             <div key={team.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
@@ -87,10 +143,10 @@ export default function TeamDirectory({
                   </button>
                 ) : (
                   <button
-                    onClick={() => onJoinTeam(team.slug)}
+                    onClick={() => onRequestJoinTeam(team.id)}
                     className="text-xs px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700"
                   >
-                    Join
+                    Request to Join
                   </button>
                 )}
               </div>
@@ -104,6 +160,7 @@ export default function TeamDirectory({
         )}
       </div>
 
+      {/* Create Team */}
       <div className="space-y-4 border-t border-slate-100 pt-4">
         <div>
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Create Team</div>
@@ -123,28 +180,6 @@ export default function TeamDirectory({
               className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               Create
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Join Team</div>
-          <div className="flex gap-2">
-            <input
-              className="flex-1 border border-slate-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-blue-400"
-              placeholder="Team slug"
-              value={joinSlug}
-              onChange={e => setJoinSlug(e.target.value)}
-            />
-            <button
-              onClick={() => {
-                if (!joinSlug.trim()) return
-                onJoinTeam(joinSlug.trim())
-                setJoinSlug('')
-              }}
-              className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900 transition-colors"
-            >
-              Join
             </button>
           </div>
         </div>

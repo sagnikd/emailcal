@@ -13,6 +13,7 @@ import AddEmailModal from './components/AddEmailModal'
 import AddCampaignModal from './components/AddCampaignModal'
 import AuthScreen from './components/AuthScreen'
 import TeamDirectory from './components/TeamDirectory'
+import JoinTeamScreen from './components/JoinTeamScreen'
 
 type Modal = 'none' | 'addEmail' | 'addCampaign'
 
@@ -28,12 +29,16 @@ export default function App() {
     error: authError,
     info,
     orgCount,
+    myJoinRequests,
+    pendingRequests,
     signIn,
     signUp,
     signOut,
     switchTeam,
     createTeam,
-    joinTeam,
+    requestJoinTeam,
+    approveRequest,
+    rejectRequest,
     leaveCurrentTeam,
   } = auth
 
@@ -146,6 +151,18 @@ export default function App() {
     )
   }
 
+  // New user: not part of any team yet → show join screen
+  if (!authLoading && teams.length === 0 && !profile.isSuperadmin) {
+    return (
+      <JoinTeamScreen
+        allTeams={allTeams}
+        myJoinRequests={myJoinRequests}
+        onRequestJoin={teamId => { void requestJoinTeam(teamId) }}
+        onSignOut={() => { void signOut() }}
+      />
+    )
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar
@@ -165,6 +182,7 @@ export default function App() {
         activeNav={activeNav}
         onNavChange={handleNavChange}
         onAddCampaign={() => setModal('addCampaign')}
+        pendingRequestCount={pendingRequests.length}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -288,9 +306,12 @@ export default function App() {
           activeTeamId={activeTeamId}
           isSuperadmin={profile.isSuperadmin}
           orgCount={orgCount}
+          pendingRequests={pendingRequests}
           onSwitchTeam={teamId => { void switchTeam(teamId) }}
           onCreateTeam={teamName => { void createTeam(teamName) }}
-          onJoinTeam={teamSlug => { void joinTeam(teamSlug) }}
+          onRequestJoinTeam={teamId => { void requestJoinTeam(teamId) }}
+          onApproveRequest={requestId => { void approveRequest(requestId) }}
+          onRejectRequest={requestId => { void rejectRequest(requestId) }}
           onLeaveCurrentTeam={() => { void leaveCurrentTeam() }}
         />
       )}

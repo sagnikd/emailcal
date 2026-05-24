@@ -17,6 +17,25 @@ export interface Profile {
   currentTeamId: string | null
 }
 
+export interface JoinRequest {
+  id: string
+  team_id: string
+  team_name: string
+  status: 'pending' | 'approved' | 'rejected'
+  requested_at: string
+  reviewed_at: string | null
+}
+
+export interface PendingRequest {
+  id: string
+  team_id: string
+  team_name: string
+  user_id: string
+  user_email: string
+  user_full_name: string
+  requested_at: string
+}
+
 export interface Campaign {
   id: string
   name: string
