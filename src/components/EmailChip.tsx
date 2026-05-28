@@ -15,13 +15,18 @@ interface Props {
   campaign?: Campaign
   hasConflict: boolean
   onClick: (e: React.MouseEvent) => void
+  onDragStart?: (e: React.DragEvent, id: string) => void
+  onDragEnd?: () => void
 }
 
-export default function EmailChip({ email, campaign, hasConflict, onClick }: Props) {
+export default function EmailChip({ email, campaign, hasConflict, onClick, onDragStart, onDragEnd }: Props) {
   return (
-    <button
+    <div
+      draggable={!!onDragStart}
+      onDragStart={onDragStart ? e => { e.stopPropagation(); onDragStart(e, email.id) } : undefined}
+      onDragEnd={onDragEnd}
       onClick={onClick}
-      className="w-full text-left group"
+      className="w-full text-left group cursor-grab active:cursor-grabbing active:opacity-50"
     >
       <div
         className={`rounded-md px-2 py-1 text-xs font-medium leading-tight mb-0.5 border-l-8 transition-all hover:shadow-sm ${STATUS_COLORS[email.status]}`}
@@ -32,6 +37,6 @@ export default function EmailChip({ email, campaign, hasConflict, onClick }: Pro
           {hasConflict && <span title="Send fatigue warning" className="shrink-0 text-orange-500">⚠</span>}
         </div>
       </div>
-    </button>
+    </div>
   )
 }

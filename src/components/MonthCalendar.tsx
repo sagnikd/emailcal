@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   eachDayOfInterval, format, isSameMonth, isToday, isSameDay
@@ -15,6 +15,7 @@ interface Props {
   getConflicts: (e: EmailCard) => boolean
   onEmailClick: (email: EmailCard) => void
   onDayClick: (date: Date) => void
+  onUpdateDate: (id: string, newDate: string) => void
   onPrev: () => void
   onNext: () => void
   onToday: () => void
@@ -39,7 +40,35 @@ function HolidayPill({ holiday }: { holiday: Holiday }) {
   )
 }
 
-export default function MonthCalendar({ currentDate, emails, campaigns, selectedCampaignId, getConflicts, onEmailClick, onDayClick, onPrev, onNext, onToday }: Props) {
+export default function MonthCalendar({ currentDate, emails, campaigns, selectedCampaignId, getConflicts, onEmailClick, onDayClick, onUpdateDate, onPrev, onNext, onToday }: Props) {
+  const dragId = useRef<string | null>(null)
+  const [overDay, setOverDay] = useState<string | null>(null)
+
+  const handleDragStart = (_e: React.DragEvent, id: string) => {
+    dragId.current = id
+  }
+
+  const handleDragOver = (e: React.DragEvent, dayKey: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setOverDay(dayKey)
+  }
+
+  const handleDrop = (e: React.DragEvent, day: Date) => {
+    e.preventDefault()
+    setOverDay(null)
+    if (!dragId.current) return
+    const email = emails.find(em => em.id === dragId.current)
+    if (!email) return
+    const existing = new Date(email.sendDate)
+    const newDate = new Date(day)
+    newDate.setHours(existing.getHours(), existing.getMinutes(), 0, 0)
+    onUpdateDate(email.id, newDate.toISOString())
+    dragId.current = null
+  }
+
+  const handleDragEnd = () => { dragId.current = null; setOverDay(null) }
+
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentDate))
     const end = endOfWeek(endOfMonth(currentDate))
@@ -88,14 +117,20 @@ export default function MonthCalendar({ currentDate, emails, campaigns, selected
           const today = isToday(day)
           const holidays = getHolidaysForDate(format(day, 'yyyy-MM-dd'))
           const hasHoliday = holidays.length > 0
+          const dayKey = format(day, 'yyyy-MM-dd')
+          const isOver = overDay === dayKey
 
           return (
             <div
               key={i}
               className={`border-b border-slate-100 p-1.5 flex flex-col cursor-pointer transition-colors group ${
+                isOver ? 'bg-blue-100/60 ring-2 ring-inset ring-blue-300' :
                 hasHoliday && inMonth ? 'bg-amber-50/40 hover:bg-amber-50/70' : inMonth ? 'bg-white hover:bg-blue-50/30' : 'bg-slate-50/60'
               }`}
               onClick={() => onDayClick(day)}
+              onDragOver={e => handleDragOver(e, dayKey)}
+              onDrop={e => handleDrop(e, day)}
+              onDragLeave={() => setOverDay(null)}
             >
               {/* Date number row */}
               <div className="flex items-center justify-between mb-1">
@@ -125,6 +160,8 @@ export default function MonthCalendar({ currentDate, emails, campaigns, selected
                     campaign={campaigns.find(c => c.id === email.campaignId)}
                     hasConflict={getConflicts(email)}
                     onClick={e => { e.stopPropagation(); onEmailClick(email) }}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
                   />
                 ))}
                 {dayEmails.length > 3 && (

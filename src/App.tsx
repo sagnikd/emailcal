@@ -290,6 +290,7 @@ export default function App() {
                   getConflicts={getConflicts}
                   onEmailClick={setSelectedEmail}
                   onDayClick={d => openAddEmail(selectedCampaignId ?? undefined, d)}
+                  onUpdateDate={(id, newDate) => { void updateEmail(id, { sendDate: newDate }) }}
                   onPrev={() => setCurrentDate(subMonths(currentDate, 1))}
                   onNext={() => setCurrentDate(addMonths(currentDate, 1))}
                   onToday={() => setCurrentDate(new Date())}
