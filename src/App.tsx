@@ -279,7 +279,7 @@ export default function App() {
             {activeNav === 'analytics'
               ? <Analytics emails={emails} campaigns={campaigns} profile={profile} />
               : activeNav === 'pipeline' || state.view === 'pipeline'
-              ? <PipelineView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} onEmailClick={setSelectedEmail} />
+              ? <PipelineView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} onEmailClick={setSelectedEmail} onUpdateStatus={(id, status) => { void updateEmail(id, { status }) }} />
               : state.view === 'list'
               ? <ListView emails={filteredEmails} campaigns={campaigns} selectedCampaignId={selectedCampaignId} getConflicts={getConflicts} onEmailClick={setSelectedEmail} />
               : <MonthCalendar
